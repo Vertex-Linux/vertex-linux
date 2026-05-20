@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Vertex Driver Manager
+GenericName=Graphics Driver Installer
+Comment=Install and manage graphics drivers for your hardware
+Exec=vertex-drivers
+Icon=video-display
+Terminal=false
+StartupNotify=true
+Categories=System;Settings;HardwareSettings;
+Keywords=driver;gpu;graphics;nvidia;amd;intel;install;

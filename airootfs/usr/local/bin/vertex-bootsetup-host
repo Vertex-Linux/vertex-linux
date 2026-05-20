@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Runs from the LIVE archiso system via Calamares shellprocess (dontChroot: true).
+#
+# Why this exists: grub-install calls grub-probe internally, which reads
+# /proc/mounts. Inside a Calamares chroot /proc/mounts shows the HOST's
+# mounts, so grub-probe can't find the target block device and fails.
+# Running here (in the live system) means /proc/mounts is correct and
+# grub-probe works fine. We point grub-install at the target via
+# --boot-directory so GRUB files land on the right partition.
+
+TARGET=/tmp/calamares-root
+LOG="${TARGET}/var/log/vertex-bootsetup.log"
+mkdir -p "${TARGET}/var/log"
+exec > >(tee -a "$LOG") 2>&1
+
+echo "[vertex-bootsetup-host] ===== START ====="
+date
+
+if [ ! -d "$TARGET" ]; then
+    echo "[vertex-bootsetup-host] FATAL: target not mounted at ${TARGET}"
+    exit 1
+fi
+
+# ── Root UUID from the target's fstab ────────────────────────────────────────
+ROOT_UUID=$(awk '$2 == "/" && $1 ~ /^UUID=/ {
+    gsub(/^UUID=/, "", $1); print $1; exit
+}' "${TARGET}/etc/fstab")
+echo "[vertex-bootsetup-host] ROOT_UUID='${ROOT_UUID}'"
+
+if [ -z "$ROOT_UUID" ]; then
+    echo "[vertex-bootsetup-host] FATAL: no UUID= root entry in ${TARGET}/etc/fstab"
+    exit 1
+fi
+
+ROOT_DEV=$(blkid -l -o device -t UUID="$ROOT_UUID" 2>/dev/null)
+echo "[vertex-bootsetup-host] ROOT_DEV='${ROOT_DEV}'"
+
+ROOT_DISK=$(lsblk -no pkname "$ROOT_DEV" 2>/dev/null | tr -d '[:space:]')
+echo "[vertex-bootsetup-host] ROOT_DISK='${ROOT_DISK}'"
+
+if [ -z "$ROOT_DISK" ]; then
+    echo "[vertex-bootsetup-host] FATAL: could not determine parent disk"
+    exit 1
+fi
+
+# ── Install GRUB from the live system ────────────────────────────────────────
+# grub-probe runs here (live system) so /proc/mounts is correct and it can
+# find the target's block device through the Calamares bind mounts.
+
+EFI_DIR="${TARGET}/boot/efi"
+if mountpoint -q "$EFI_DIR" 2>/dev/null; then
+    echo "[vertex-bootsetup-host] EFI mode — installing to ${EFI_DIR}"
+    grub-install \
+        --target=x86_64-efi \
+        --efi-directory="$EFI_DIR" \
+        --boot-directory="${TARGET}/boot" \
+        --bootloader-id=VertexLinux \
+        --recheck \
+        && echo "[vertex-bootsetup-host] EFI grub-install OK" \
+        || echo "[vertex-bootsetup-host] WARNING: EFI grub-install failed"
+else
+    echo "[vertex-bootsetup-host] BIOS/MBR mode — installing to /dev/${ROOT_DISK}"
+    grub-install \
+        --target=i386-pc \
+        --boot-directory="${TARGET}/boot" \
+        "/dev/$ROOT_DISK" \
+        && echo "[vertex-bootsetup-host] BIOS grub-install OK" \
+        || echo "[vertex-bootsetup-host] WARNING: BIOS grub-install failed"
+fi
+
+# ── Write grub.cfg ────────────────────────────────────────────────────────────
+mkdir -p "${TARGET}/boot/grub"
+cat > "${TARGET}/boot/grub/grub.cfg" << GRUBEOF
+set timeout_style=menu
+set timeout=5
+set default=0
+
+insmod part_msdos
+insmod part_gpt
+insmod ext2
+insmod gzio
+insmod search
+insmod linux
+
+search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
+
+menuentry "Vertex Linux" {
+    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet loglevel=3
+    initrd /boot/initramfs-linux.img
+}
+
+menuentry "Vertex Linux (fallback initramfs)" {
+    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet loglevel=3
+    initrd /boot/initramfs-linux-fallback.img
+}
+GRUBEOF
+
+echo "[vertex-bootsetup-host] grub.cfg written:"
+cat "${TARGET}/boot/grub/grub.cfg"
+echo "[vertex-bootsetup-host] ===== DONE ====="

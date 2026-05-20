@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Calamares bootloader module calls this instead of grub-mkconfig.
+# grub-mkconfig's 10_linux always exits early in the archiso chroot
+# (grub-probe fails on the overlayfs root) producing an empty grub.cfg.
+# We block it here; vertex-grubcfg writes the real grub.cfg afterwards.
+exit 0

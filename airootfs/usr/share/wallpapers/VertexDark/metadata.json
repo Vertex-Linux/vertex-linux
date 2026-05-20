@@ -1,0 +1,10 @@
+{
+    "KPlugin": {
+        "Authors": [{ "Name": "Vertex Linux" }],
+        "Description": "Near-black dark variant for OLED and dark mode setups",
+        "Id": "VertexDark",
+        "License": "CC-BY-4.0",
+        "Name": "Vertex Dark",
+        "Version": "1.0"
+    }
+}

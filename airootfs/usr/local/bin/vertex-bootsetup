@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Install GRUB and write grub.cfg without using grub-install.
+#
+# grub-install calls grub-probe internally, which reads /proc/mounts from the
+# host (bind-mounted by Calamares) and can't find the target's block devices.
+# Instead we call grub-mkimage + grub-bios-setup directly — no grub-probe.
+#
+# EFI path uses grub-install with GRUB_DEVICE pre-set so grub-probe is skipped
+# for device detection.
+
+LOG=/var/log/vertex-bootsetup.log
+mkdir -p /var/log
+exec > >(tee -a "$LOG") 2>&1
+
+echo "[vertex-bootsetup] ===== START ====="
+date
+
+# ── Root UUID from fstab ──────────────────────────────────────────────────────
+ROOT_UUID=$(awk '$2 == "/" && $1 ~ /^UUID=/ {
+    gsub(/^UUID=/, "", $1); print $1; exit
+}' /etc/fstab)
+echo "[vertex-bootsetup] ROOT_UUID='${ROOT_UUID}'"
+
+if [ -z "$ROOT_UUID" ]; then
+    echo "[vertex-bootsetup] FATAL: no UUID= root entry in /etc/fstab"
+    exit 1
+fi
+
+# ── Root device and parent disk ───────────────────────────────────────────────
+ROOT_DEV=$(blkid -l -o device -t UUID="$ROOT_UUID" 2>/dev/null || true)
+echo "[vertex-bootsetup] ROOT_DEV='${ROOT_DEV}'"
+
+if [ -z "$ROOT_DEV" ]; then
+    echo "[vertex-bootsetup] FATAL: blkid found no device for UUID=${ROOT_UUID}"
+    exit 1
+fi
+
+ROOT_DISK=$(lsblk -no pkname "$ROOT_DEV" 2>/dev/null | tr -d '[:space:]')
+echo "[vertex-bootsetup] ROOT_DISK='${ROOT_DISK}'"
+
+if [ -z "$ROOT_DISK" ]; then
+    echo "[vertex-bootsetup] FATAL: could not determine parent disk for ${ROOT_DEV}"
+    exit 1
+fi
+
+# ── Bootloader install ────────────────────────────────────────────────────────
+if mountpoint -q /boot/efi 2>/dev/null; then
+    # ── EFI: grub-install with GRUB_DEVICE pre-set skips grub-probe ──────────
+    echo "[vertex-bootsetup] EFI mode — running grub-install with explicit device"
+    export GRUB_DEVICE="/dev/$ROOT_DISK"
+    export GRUB_DEVICE_BOOT="$ROOT_DEV"
+    export GRUB_DISABLE_OS_PROBER=true
+    grub-install \
+        --target=x86_64-efi \
+        --efi-directory=/boot/efi \
+        --bootloader-id=VertexLinux \
+        --recheck \
+        && echo "[vertex-bootsetup] EFI grub-install OK" \
+        || echo "[vertex-bootsetup] WARNING: EFI grub-install failed — check log"
+else
+    # ── BIOS/MBR: grub-mkimage + grub-bios-setup (zero grub-probe calls) ─────
+    echo "[vertex-bootsetup] BIOS mode — using grub-mkimage + grub-bios-setup"
+
+    GRUB_LIB=/usr/lib/grub/i386-pc
+    GRUB_BOOT=/boot/grub/i386-pc
+
+    if [ ! -d "$GRUB_LIB" ]; then
+        echo "[vertex-bootsetup] FATAL: ${GRUB_LIB} not found — is grub installed?"
+        exit 1
+    fi
+
+    mkdir -p "$GRUB_BOOT"
+    echo "[vertex-bootsetup] Copying GRUB modules to ${GRUB_BOOT}..."
+    cp -f "${GRUB_LIB}"/*.mod  "$GRUB_BOOT/" 2>/dev/null || true
+    cp -f "${GRUB_LIB}"/*.lst  "$GRUB_BOOT/" 2>/dev/null || true
+    cp -f "${GRUB_LIB}/boot.img" "$GRUB_BOOT/" 2>/dev/null || true
+
+    # Embedded config: search for root by UUID so GRUB finds the right
+    # partition without hardcoding hd0 or partition numbers.
+    printf 'search.fs_uuid %s root\nset prefix=($root)/grub\n' \
+        "$ROOT_UUID" > /tmp/grub_embedded.cfg
+    echo "[vertex-bootsetup] Embedded config:"
+    cat /tmp/grub_embedded.cfg
+
+    echo "[vertex-bootsetup] Running grub-mkimage..."
+    grub-mkimage \
+        --directory  "$GRUB_LIB" \
+        --config     /tmp/grub_embedded.cfg \
+        --output     "${GRUB_BOOT}/core.img" \
+        --format     i386-pc \
+        biosdisk part_msdos part_gpt ext2 gzio normal configfile linux \
+        echo search search_fs_uuid search_label \
+        && echo "[vertex-bootsetup] grub-mkimage OK" \
+        || { echo "[vertex-bootsetup] FATAL: grub-mkimage failed"; exit 1; }
+
+    echo "[vertex-bootsetup] Running grub-bios-setup on /dev/${ROOT_DISK}..."
+    grub-bios-setup \
+        --directory "$GRUB_BOOT" \
+        "/dev/$ROOT_DISK" \
+        && echo "[vertex-bootsetup] grub-bios-setup OK" \
+        || { echo "[vertex-bootsetup] FATAL: grub-bios-setup failed"; exit 1; }
+fi
+
+# ── Write grub.cfg ────────────────────────────────────────────────────────────
+mkdir -p /boot/grub
+echo "[vertex-bootsetup] Writing /boot/grub/grub.cfg..."
+{
+    echo 'set timeout_style=menu'
+    echo 'set timeout=5'
+    echo 'set default=0'
+    echo ''
+    echo 'insmod part_msdos'
+    echo 'insmod part_gpt'
+    echo 'insmod ext2'
+    echo 'insmod gzio'
+    echo ''
+    echo "search --no-floppy --fs-uuid --set=root ${ROOT_UUID}"
+    echo ''
+    echo 'menuentry "Vertex Linux" {'
+    echo "    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet loglevel=3"
+    echo '    initrd /boot/initramfs-linux.img'
+    echo '}'
+    echo ''
+    echo 'menuentry "Vertex Linux (fallback initramfs)" {'
+    echo "    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet loglevel=3"
+    echo '    initrd /boot/initramfs-linux-fallback.img'
+    echo '}'
+} > /boot/grub/grub.cfg
+
+echo "[vertex-bootsetup] grub.cfg written:"
+cat /boot/grub/grub.cfg
+echo "[vertex-bootsetup] ===== DONE ====="

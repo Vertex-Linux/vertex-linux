@@ -1,0 +1,2 @@
+- Add an update manager (That lets you update the OS to a new github commit and add all the new stuff from that etc and lets you update other general packages)
+- Fix the start button not being styled properly

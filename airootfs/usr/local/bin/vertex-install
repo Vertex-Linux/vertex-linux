@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+LOG=/tmp/calamares.log
+if [[ $EUID -eq 0 ]]; then
+    calamares -D6 2>&1 | tee "$LOG"
+else
+    sudo -E calamares -D6 2>&1 | tee "$LOG"
+fi
+if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    konsole --noclose -e bash -c "
+        echo '=== Calamares crashed. Log output: ==='
+        cat '$LOG'
+        echo
+        read -p 'Press Enter to close'
+    "
+fi

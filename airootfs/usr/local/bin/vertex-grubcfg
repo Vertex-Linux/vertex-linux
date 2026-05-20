@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Runs from the LIVE system (Calamares dontChroot: true).
+# Writes a working grub.cfg to the installed target.
+# The Calamares bootloader module handles grub-install with --force.
+# grub-mkconfig is replaced by vertex-grubmkconfig-noop so it cannot
+# overwrite this file with a broken (empty) one.
+
+TARGET=/tmp/calamares-root
+
+ROOT_UUID=$(awk '$2 == "/" && $1 ~ /^UUID=/ {
+    gsub(/^UUID=/, "", $1); print $1; exit
+}' "${TARGET}/etc/fstab")
+
+if [ -z "$ROOT_UUID" ]; then
+    echo "[vertex-grubcfg] FATAL: no UUID= root entry in ${TARGET}/etc/fstab" >&2
+    exit 1
+fi
+
+echo "[vertex-grubcfg] Writing grub.cfg for UUID=${ROOT_UUID}"
+mkdir -p "${TARGET}/boot/grub"
+
+cat > "${TARGET}/boot/grub/grub.cfg" << EOF
+set timeout_style=menu
+set timeout=5
+set default=0
+
+insmod part_msdos
+insmod part_gpt
+insmod ext2
+insmod gzio
+
+search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
+
+menuentry "Vertex Linux" {
+    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet loglevel=3
+    initrd /boot/initramfs-linux.img
+}
+
+menuentry "Vertex Linux (fallback initramfs)" {
+    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet loglevel=3
+    initrd /boot/initramfs-linux-fallback.img
+}
+EOF
+
+echo "[vertex-grubcfg] Done."

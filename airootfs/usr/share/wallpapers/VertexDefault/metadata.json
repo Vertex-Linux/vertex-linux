@@ -1,0 +1,10 @@
+{
+    "KPlugin": {
+        "Authors": [{ "Name": "Vertex Linux" }],
+        "Description": "Deep purple — the signature Vertex Linux wallpaper",
+        "Id": "VertexDefault",
+        "License": "CC-BY-4.0",
+        "Name": "Vertex Default",
+        "Version": "1.0"
+    }
+}

@@ -1,0 +1,31 @@
+---
+componentName: vertex
+
+strings:
+    productName:         "Vertex Linux"
+    shortProductName:    "Vertex"
+    version:             "Rolling"
+    shortVersion:        "Rolling"
+    versionedName:       "Vertex Linux Rolling"
+    shortVersionedName:  "Vertex Rolling"
+    bootloaderEntryName: "Vertex Linux"
+    productUrl:          "https://vertex-linux.org"
+    supportUrl:          "https://vertex-linux.org/support"
+    knownIssuesUrl:      "https://vertex-linux.org/bugs"
+    releaseNotesUrl:     "https://vertex-linux.org"
+
+images:
+    productLogo:    "vertex-logo.svg"
+    productIcon:    "vertex-logo.svg"
+    productWelcome: "vertex-logo.svg"
+
+slideshow:    "show.qml"
+slideshowAPI: 2
+
+stylesheet: "stylesheet.qss"
+
+style:
+    sidebarBackground:    "#1A0B2E"
+    sidebarText:          "#C4A8D8"
+    sidebarTextHighlight: "#FFFFFF"
+    sidebarSelect:        "#6D28D9"

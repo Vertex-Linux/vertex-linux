@@ -1,0 +1,11 @@
+# Build output
+out/
+work/
+
+# Local package repository (built/downloaded packages)
+local-repo/*.pkg.tar.zst
+local-repo/*.pkg.tar.zst.sig
+local-repo/*.db
+local-repo/*.db.tar.zst
+local-repo/*.files
+local-repo/*.files.tar.zst

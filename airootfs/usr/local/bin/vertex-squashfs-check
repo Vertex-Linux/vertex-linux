@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Runs before unpackfs (dontChroot: true, live system).
+# Ensures the squashfs is at the path Calamares expects.
+# If it's elsewhere (unusual hardware/boot path), creates a symlink.
+
+EXPECTED=/run/archiso/bootmnt/vertex/x86_64/airootfs.sfs
+LOG=/tmp/vertex-squashfs-check.log
+exec > >(tee -a "$LOG") 2>&1
+
+echo "[squashfs-check] ===== START ====="
+echo "[squashfs-check] Expected: ${EXPECTED}"
+echo "[squashfs-check] /run/archiso tree:"
+find /run/archiso/ -maxdepth 5 2>/dev/null || echo "(find failed)"
+
+if [ -f "$EXPECTED" ]; then
+    echo "[squashfs-check] OK — squashfs found at expected path"
+    exit 0
+fi
+
+echo "[squashfs-check] WARNING: squashfs not at expected path, searching..."
+ACTUAL=$(find /run/archiso/ /tmp/ -name "airootfs.sfs" -not -type l 2>/dev/null | head -1)
+
+if [ -n "$ACTUAL" ]; then
+    echo "[squashfs-check] Found at: ${ACTUAL}"
+    mkdir -p "$(dirname "$EXPECTED")"
+    ln -sf "$ACTUAL" "$EXPECTED"
+    echo "[squashfs-check] Symlink created: ${EXPECTED} -> ${ACTUAL}"
+else
+    echo "[squashfs-check] ERROR: airootfs.sfs not found anywhere"
+    echo "[squashfs-check] Loop devices:"
+    losetup -l 2>/dev/null || true
+    echo "[squashfs-check] Mounts:"
+    cat /proc/mounts 2>/dev/null || true
+fi
+
+echo "[squashfs-check] ===== DONE ====="

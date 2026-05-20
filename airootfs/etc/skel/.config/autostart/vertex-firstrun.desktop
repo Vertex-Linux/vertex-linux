@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Vertex Linux First Run
+Exec=/usr/local/bin/vertex-firstrun
+X-KDE-autostart-after=panel
+OnlyShowIn=KDE;
+NoDisplay=true

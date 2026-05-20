@@ -1,0 +1,402 @@
+#!/usr/bin/env bash
+# Runs from the LIVE system (Calamares dontChroot: true).
+# Handles: kernel copy, mkinitcpio, grub-install, grub.cfg, cleanup.
+# Logs to /tmp/vertex-postinstall.log — always readable from live ISO.
+
+LIVE_LOG=/tmp/vertex-postinstall.log
+exec > >(tee -a "$LIVE_LOG") 2>&1
+
+echo "=== vertex-postinstall START $(date) ==="
+
+# ── Find the actual Calamares target directory ────────────────────────────────
+echo "--- Locating target"
+echo "All mounts with ext* or btrfs or xfs:"
+findmnt -rno TARGET,SOURCE,FSTYPE | grep -E "ext|btrfs|xfs|f2fs" 2>/dev/null
+echo "/tmp contents:"
+ls /tmp/ 2>/dev/null
+echo "Searching for installed fstab:"
+find /tmp /mnt -name "fstab" -path "*/etc/fstab" 2>/dev/null
+
+TARGET=""
+# 1. Exact paths first
+for CANDIDATE in /tmp/calamares-root /mnt /tmp/calamares-data; do
+    if [ -d "${CANDIDATE}/usr" ] && [ -d "${CANDIDATE}/etc" ]; then
+        TARGET="$CANDIDATE"
+        echo "Found target at: ${TARGET}"
+        break
+    fi
+done
+
+# 2. Calamares uses a random suffix: calamares-root-XXXXXXXX
+if [ -z "$TARGET" ]; then
+    for CANDIDATE in /tmp/calamares-root-*; do
+        if [ -d "${CANDIDATE}/usr" ] && [ -d "${CANDIDATE}/etc" ]; then
+            TARGET="$CANDIDATE"
+            echo "Found target at: ${TARGET} (random-suffix match)"
+            break
+        fi
+    done
+fi
+
+# 3. Fstab search — explicitly exclude usr/share/factory (fake fstab)
+if [ -z "$TARGET" ]; then
+    FSTAB=$(find /tmp /mnt -name "fstab" -path "*/etc/fstab" \
+        ! -path "*/usr/share/*" 2>/dev/null | head -1)
+    if [ -n "$FSTAB" ]; then
+        TARGET="${FSTAB%/etc/fstab}"
+        echo "Found target at: ${TARGET} (via fstab search)"
+    fi
+fi
+
+if [ -z "$TARGET" ]; then
+    echo "FATAL: cannot locate target filesystem"
+    cat /proc/mounts
+    ls -la /tmp/ /mnt/ 2>/dev/null
+    exit 1
+fi
+
+echo "Target root contents:"
+ls "${TARGET}/"
+mkdir -p "${TARGET}/var/log"
+
+# ── 1. Copy kernel ─────────────────────────────────────────────────────────────
+echo "--- Copying kernel"
+echo "Archiso mounts:"
+findmnt -rno TARGET,SOURCE | grep archiso 2>/dev/null || true
+
+VMLINUZ_SRC=""
+for CANDIDATE in \
+    "/run/archiso/bootmnt/vertex/boot/x86_64/vmlinuz-linux" \
+    "/run/archiso/bootmnt/arch/boot/x86_64/vmlinuz-linux" \
+    "/run/archiso/airootfs/boot/vmlinuz-linux" \
+    "/boot/vmlinuz-linux"; do
+    if [ -f "$CANDIDATE" ]; then
+        VMLINUZ_SRC="$CANDIDATE"
+        break
+    fi
+done
+
+# Broad fallback: search anywhere under /run/archiso (covers non-standard mounts)
+if [ -z "$VMLINUZ_SRC" ]; then
+    echo "Standard paths not found — searching /run/archiso..."
+    VMLINUZ_SRC=$(find /run/archiso -name "vmlinuz-linux" -type f 2>/dev/null | head -1)
+fi
+
+# copytoram fallback: bootmnt was unmounted — re-mount the USB by its archiso label
+if [ -z "$VMLINUZ_SRC" ]; then
+    echo "Trying copytoram fallback — re-mounting archiso device..."
+    ARCHISO_LABEL=$(grep -oP 'archisolabel=\K\S+' /proc/cmdline 2>/dev/null || true)
+    if [ -n "$ARCHISO_LABEL" ]; then
+        ARCHISO_DEV=$(blkid -L "$ARCHISO_LABEL" 2>/dev/null || true)
+        echo "Archiso label=${ARCHISO_LABEL}  device=${ARCHISO_DEV}"
+        if [ -n "$ARCHISO_DEV" ]; then
+            mkdir -p /tmp/archiso-remount
+            if mount -r "$ARCHISO_DEV" /tmp/archiso-remount 2>/dev/null; then
+                VMLINUZ_SRC=$(find /tmp/archiso-remount -name "vmlinuz-linux" \
+                    -type f 2>/dev/null | head -1)
+                echo "Re-mount search result: ${VMLINUZ_SRC}"
+            else
+                echo "WARNING: re-mount of ${ARCHISO_DEV} failed"
+            fi
+        fi
+    fi
+fi
+
+if [ -n "$VMLINUZ_SRC" ]; then
+    echo "Kernel found at: ${VMLINUZ_SRC}"
+    mkdir -p "${TARGET}/boot"
+    cp "$VMLINUZ_SRC" "${TARGET}/boot/vmlinuz-linux" \
+        && echo "Kernel copy OK" \
+        || { echo "FATAL: kernel copy failed"; exit 1; }
+    # clean up temp mount if we made one
+    umount /tmp/archiso-remount 2>/dev/null || true
+else
+    # Last resort: download the linux package directly into the target.
+    # Requires network — works when pacman db is intact in TARGET after unpackfs.
+    echo "Kernel not found by mount methods — installing linux package via pacman"
+    pacman --root "$TARGET" --noconfirm -S linux \
+        && echo "linux package installed OK" \
+        || { echo "FATAL: cannot obtain kernel by any method"; exit 1; }
+fi
+
+# ── 2. Initialize pacman keyring ───────────────────────────────────────────────
+echo "--- Initialising pacman keyring"
+arch-chroot "$TARGET" pacman-key --init \
+    && echo "pacman-key init OK" \
+    || echo "WARNING: pacman-key --init failed"
+arch-chroot "$TARGET" pacman-key --populate archlinux \
+    && echo "pacman-key populate archlinux OK" \
+    || echo "WARNING: pacman-key --populate archlinux failed"
+
+# ── 3. Set up mkinitcpio ───────────────────────────────────────────────────────
+echo "--- Setting up mkinitcpio"
+rm -f "${TARGET}/etc/mkinitcpio.conf.d/archiso.conf"
+
+# Add plymouth hook after udev in the installed system's mkinitcpio.conf
+if grep -q "^HOOKS=" "${TARGET}/etc/mkinitcpio.conf" 2>/dev/null; then
+    sed -i 's/\(HOOKS=([^)]*udev\)/\1 plymouth/' "${TARGET}/etc/mkinitcpio.conf"
+    echo "Plymouth hook added to mkinitcpio.conf"
+    grep "^HOOKS=" "${TARGET}/etc/mkinitcpio.conf"
+else
+    echo "WARNING: mkinitcpio.conf HOOKS line not found, writing default with plymouth"
+    cat > "${TARGET}/etc/mkinitcpio.conf" << 'MKINITCPIO'
+MODULES=()
+BINARIES=()
+FILES=()
+HOOKS=(base udev plymouth autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)
+COMPRESSION="zstd"
+COMPRESSION_OPTIONS=(-0)
+MKINITCPIO
+fi
+
+mkdir -p "${TARGET}/etc/mkinitcpio.d"
+cat > "${TARGET}/etc/mkinitcpio.d/linux.preset" << 'PRESET'
+PRESETS=('default' 'fallback')
+ALL_kver=/boot/vmlinuz-linux
+default_config=/etc/mkinitcpio.conf
+default_image=/boot/initramfs-linux.img
+fallback_config=/etc/mkinitcpio.conf
+fallback_image=/boot/initramfs-linux-fallback.img
+fallback_options=--fallback
+PRESET
+echo "Preset written"
+
+# Set custom Vertex Plymouth theme
+arch-chroot "$TARGET" plymouth-set-default-theme vertex 2>/dev/null \
+    && echo "Plymouth theme set to vertex" \
+    || echo "WARNING: could not set Plymouth theme"
+
+echo "--- Running mkinitcpio"
+arch-chroot "$TARGET" /usr/bin/mkinitcpio -P \
+    && echo "mkinitcpio OK" \
+    || echo "WARNING: mkinitcpio failed — grub will still be installed"
+
+# ── 4. Install GRUB ────────────────────────────────────────────────────────────
+echo "--- Installing GRUB"
+
+if [ ! -f "${TARGET}/etc/fstab" ]; then
+    echo "FATAL: ${TARGET}/etc/fstab not found"
+    find /tmp /mnt -name "fstab" 2>/dev/null
+    exit 1
+fi
+
+ROOT_UUID=$(awk '$2 == "/" && $1 ~ /^UUID=/ {
+    gsub(/^UUID=/, "", $1); print $1; exit
+}' "${TARGET}/etc/fstab")
+echo "ROOT_UUID=${ROOT_UUID}"
+
+if [ -z "$ROOT_UUID" ]; then
+    echo "fstab contents:"
+    cat "${TARGET}/etc/fstab"
+    echo "FATAL: no UUID= root entry"
+    exit 1
+fi
+
+ROOT_DEV=$(blkid -l -o device -t "UUID=${ROOT_UUID}" 2>/dev/null)
+ROOT_DISK=$(lsblk -no pkname "$ROOT_DEV" 2>/dev/null | tr -d '[:space:]')
+echo "ROOT_DEV=${ROOT_DEV}  ROOT_DISK=${ROOT_DISK}"
+
+if [ -z "$ROOT_DISK" ]; then
+    echo "FATAL: could not determine parent disk"
+    lsblk
+    exit 1
+fi
+
+EFI_DIR="${TARGET}/boot/efi"
+if mountpoint -q "$EFI_DIR" 2>/dev/null; then
+    echo "EFI mode"
+    grub-install \
+        --target=x86_64-efi \
+        --efi-directory="$EFI_DIR" \
+        --boot-directory="${TARGET}/boot" \
+        --bootloader-id=VertexLinux \
+        --recheck --force \
+        && echo "EFI grub-install OK" \
+        || { echo "FATAL: EFI grub-install failed"; exit 1; }
+else
+    echo "BIOS/MBR mode — /dev/${ROOT_DISK}"
+    grub-install \
+        --target=i386-pc \
+        --boot-directory="${TARGET}/boot" \
+        --recheck --force \
+        "/dev/${ROOT_DISK}" \
+        && echo "BIOS grub-install OK" \
+        || { echo "FATAL: BIOS grub-install failed"; exit 1; }
+fi
+
+# ── 5. Write grub.cfg ──────────────────────────────────────────────────────────
+echo "--- Writing grub.cfg"
+mkdir -p "${TARGET}/boot/grub"
+cat > "${TARGET}/boot/grub/grub.cfg" << GRUBEOF
+set timeout_style=menu
+set timeout=5
+set default=0
+
+insmod part_msdos
+insmod part_gpt
+insmod ext2
+insmod gzio
+insmod search
+insmod linux
+
+search --no-floppy --fs-uuid --set=root ${ROOT_UUID}
+
+menuentry "Vertex Linux" {
+    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet splash loglevel=3 rd.udev.log_level=3
+    initrd /boot/initramfs-linux.img
+}
+
+menuentry "Vertex Linux (fallback initramfs)" {
+    linux  /boot/vmlinuz-linux root=UUID=${ROOT_UUID} rw quiet splash loglevel=3 rd.udev.log_level=3
+    initrd /boot/initramfs-linux-fallback.img
+}
+GRUBEOF
+echo "grub.cfg written"
+
+# ── 6. Patch KDE kickoff default launcher icon (main.xml fallback) ────────────
+echo "--- Patching kickoff default icon in main.xml"
+KICKOFF_XML=$(find "${TARGET}/usr/share/plasma" -path "*/kickoff/contents/config/main.xml" 2>/dev/null | head -1)
+if [ -n "$KICKOFF_XML" ]; then
+    python3 - "$KICKOFF_XML" << 'PYEOF'
+import sys, re
+
+path = sys.argv[1]
+with open(path, 'r') as f:
+    content = f.read()
+
+# Replace the <default>...</default> inside any <entry name="icon"> block
+patched = re.sub(
+    r'(<entry\s[^>]*name=["\']icon["\'][^>]*>.*?<default>)[^<]*(</default>)',
+    r'\1vertex-launcher\2',
+    content,
+    flags=re.DOTALL | re.IGNORECASE
+)
+
+if patched != content:
+    with open(path, 'w') as f:
+        f.write(patched)
+    print(f"Kickoff main.xml patched: {path}")
+elif 'vertex-launcher' in content:
+    print("main.xml already patched")
+else:
+    print(f"WARNING: icon entry not found in {path}")
+PYEOF
+else
+    echo "NOTE: kickoff main.xml not found — layout.js patch is primary method"
+fi
+
+# ── 5b. Patch Plasma defaultPanel layout JS to set kickoff icon ──────────────
+echo "--- Patching Plasma defaultPanel layout JS for kickoff icon"
+LAYOUT_JS="${TARGET}/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js"
+if [ -f "$LAYOUT_JS" ]; then
+    python3 - "$LAYOUT_JS" << 'PYEOF'
+import sys, re
+
+path = sys.argv[1]
+with open(path, 'r') as f:
+    content = f.read()
+
+# Replace bare addWidget call with one that captures the return value and sets icon
+# Handles: panel.addWidget("org.kde.plasma.kickoff")
+old = 'panel.addWidget("org.kde.plasma.kickoff")'
+new = ('var kickoff = panel.addWidget("org.kde.plasma.kickoff")\n'
+       'kickoff.currentConfigGroup = ["General"]\n'
+       'kickoff.writeConfig("icon", "vertex-launcher")')
+
+if old in content:
+    content = content.replace(old, new)
+    with open(path, 'w') as f:
+        f.write(content)
+    print("Layout JS patched: kickoff icon set")
+elif 'vertex-launcher' in content:
+    print("Layout JS already patched")
+else:
+    print(f"WARNING: kickoff addWidget not found in {path}")
+PYEOF
+else
+    echo "NOTE: defaultPanel layout.js not found at expected path — searching"
+    find "${TARGET}/usr/share/plasma/layout-templates" -name "layout.js" 2>/dev/null | head -5
+fi
+
+# ── 5c. Patch Breeze look-and-feel defaults for wallpaper ─────────────────────
+echo "--- Setting default wallpaper in look-and-feel"
+LNF="${TARGET}/usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/defaults"
+if [ -f "$LNF" ]; then
+    echo "Current look-and-feel defaults:"
+    cat "$LNF"
+    if grep -q "^\[Wallpaper\]" "$LNF"; then
+        sed -i '/^\[Wallpaper\]/,/^\[/ s|^Image=.*|Image=VertexDefault|' "$LNF"
+    else
+        printf '\n[Wallpaper]\nImage=VertexDefault\n' >> "$LNF"
+    fi
+    echo "Updated look-and-feel defaults:"
+    cat "$LNF"
+else
+    echo "NOTE: look-and-feel defaults not found — searching"
+    find "${TARGET}/usr/share/plasma/look-and-feel" -name "defaults" 2>/dev/null | head -5
+fi
+
+# ── 7. Cleanup: remove live-only artifacts ─────────────────────────────────────
+echo "--- Cleanup"
+
+# Remove the live user account and its home directory
+arch-chroot "$TARGET" userdel -r liveuser 2>/dev/null \
+    && echo "liveuser removed" \
+    || echo "NOTE: liveuser not found or already removed"
+
+# Remove live-only sudoers rule (installed user should use password for sudo)
+rm -f "${TARGET}/etc/sudoers.d/liveuser"
+
+# Remove installer desktop shortcut (not needed post-install)
+rm -f "${TARGET}/usr/share/applications/vertex-install.desktop"
+
+# Remove any installer shortcuts from all home desktops
+find "${TARGET}/home" -name "vertex-install.desktop" -o -name "calamares.desktop" \
+    2>/dev/null | xargs rm -f 2>/dev/null || true
+
+# ── 8. Set up pacman mirrorlist and sync databases ────────────────────────────
+echo "--- Setting up pacman mirrors and databases"
+
+# Refresh the live mirrorlist with reflector so the target gets good mirrors
+if command -v reflector &>/dev/null; then
+    reflector --latest 10 --sort rate --save /etc/pacman.d/mirrorlist 2>/dev/null \
+        && echo "Reflector updated live mirrorlist" \
+        || echo "NOTE: reflector failed (no network?), using existing mirrorlist"
+fi
+
+# Copy the live mirrorlist into the installed system
+if [ -s /etc/pacman.d/mirrorlist ]; then
+    cp /etc/pacman.d/mirrorlist "${TARGET}/etc/pacman.d/mirrorlist" \
+        && echo "Mirrorlist copied to target" \
+        || echo "WARNING: mirrorlist copy failed"
+else
+    echo "WARNING: live mirrorlist is empty — target may not have working mirrors"
+fi
+
+# Enable multilib repository
+echo "--- Enabling multilib"
+sed -i 's/^#\[multilib\]/[multilib]/' "${TARGET}/etc/pacman.conf"
+sed -i '/^\[multilib\]/{n;s/^#Include/Include/}' "${TARGET}/etc/pacman.conf"
+grep -A1 "\[multilib\]" "${TARGET}/etc/pacman.conf" \
+    && echo "multilib enabled" \
+    || echo "WARNING: multilib section not found in pacman.conf"
+
+# Sync pacman databases inside the target chroot (includes multilib)
+arch-chroot "$TARGET" pacman -Sy --noconfirm 2>/dev/null \
+    && echo "Pacman databases synced" \
+    || echo "WARNING: pacman -Sy failed (no network at install time?)"
+
+# ── 9. Write installed version ─────────────────────────────────────────────────
+echo "--- Writing vertex-release"
+INSTALL_SHA=$(curl -s --max-time 8 \
+    -H "User-Agent: vertex-postinstall/1.0" \
+    "https://api.github.com/repos/arc360alt/vertex-linux/commits/main" \
+    2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['sha'])" 2>/dev/null || true)
+if [ -n "$INSTALL_SHA" ]; then
+    echo "$INSTALL_SHA" > "${TARGET}/etc/vertex-release"
+    echo "vertex-release set to ${INSTALL_SHA:0:8}"
+else
+    echo "NOTE: could not fetch commit hash (no network?); leaving as 'unknown'"
+fi
+
+echo "=== vertex-postinstall DONE $(date) ==="

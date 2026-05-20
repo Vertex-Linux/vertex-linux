@@ -1,0 +1,139 @@
+# ──────────────────────────────────────────
+#  Vertex Linux – package list (x86_64)
+# ──────────────────────────────────────────
+
+# === Base System ===
+base
+base-devel
+linux
+linux-headers
+linux-firmware
+mkinitcpio
+mkinitcpio-busybox
+mkinitcpio-archiso
+
+# === Microcode ===
+amd-ucode
+intel-ucode
+
+# === Boot ===
+grub
+efibootmgr
+os-prober
+syslinux
+
+# === Plymouth (boot splash) ===
+plymouth
+
+# === Display Server ===
+xorg-server
+xorg-xinit
+xf86-video-vesa
+xf86-video-nouveau
+xf86-video-amdgpu
+xf86-video-intel
+
+# === KDE Plasma Desktop ===
+plasma-meta
+sddm
+sddm-kcm
+xdg-user-dirs
+xdg-utils
+kdegraphics-thumbnailers
+ffmpegthumbs
+
+# === KDE Applications ===
+dolphin
+konsole
+kate
+ark
+gwenview
+spectacle
+okular
+kcalc
+kdeconnect
+partitionmanager
+discover
+packagekit-qt6
+flatpak
+plasma-browser-integration
+filelight
+flatpak
+
+# === Network ===
+networkmanager
+plasma-nm
+network-manager-applet
+openssh
+wget
+curl
+rsync
+
+# === Audio / Video ===
+pipewire
+pipewire-alsa
+pipewire-pulse
+wireplumber
+plasma-pa
+gst-plugin-pipewire
+phonon-qt6-vlc
+
+# === Bluetooth ===
+bluez
+bluez-utils
+bluedevil
+
+# === Printing ===
+cups
+print-manager
+
+# === Fonts ===
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+ttf-liberation
+ttf-dejavu
+ttf-hack
+adobe-source-code-pro-fonts
+
+# === Python ===
+python
+python-pyqt6
+
+# === System Utilities ===
+htop
+fastfetch
+vim
+nano
+git
+reflector
+bash-completion
+man-db
+man-pages
+texinfo
+zip
+unzip
+p7zip
+unrar
+
+# === Installation / Disk Tools ===
+arch-install-scripts
+gptfdisk
+parted
+dosfstools
+e2fsprogs
+btrfs-progs
+ntfs-3g
+exfatprogs
+
+# === Calamares GUI Installer ===
+# Built from AUR by build.sh and served from the local-repo/ directory.
+calamares
+kpmcore
+squashfs-tools
+
+# === Keyring ===
+archlinux-keyring
+
+# === Boot Memory Test ===
+memtest86+

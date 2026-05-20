@@ -1,0 +1,10 @@
+{
+    "KPlugin": {
+        "Authors": [{ "Name": "Vertex Linux" }],
+        "Description": "Deep indigo, evoking deep space",
+        "Id": "VertexSpace",
+        "License": "CC-BY-4.0",
+        "Name": "Vertex Space",
+        "Version": "1.0"
+    }
+}
