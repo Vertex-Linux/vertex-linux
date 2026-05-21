@@ -1,34 +1,17 @@
 #!/usr/bin/env bash
-# Vertex Linux — pacman shim
-# Passes through when called by vpkg or calamares; otherwise redirects to vpkg.
+# Vertex Linux — pacman shim: warns users to use vpkg, but still runs.
 
-_called_by_calamares() {
-    local pid=$PPID
-    while [[ "$pid" -gt 1 ]]; do
-        local comm
-        comm=$(cat /proc/$pid/comm 2>/dev/null) || break
-        [[ "$comm" == "calamares" ]] && return 0
-        pid=$(awk '/^PPid:/{print $2}' /proc/$pid/status 2>/dev/null) || break
-    done
-    return 1
-}
-
-if [[ "${_VPKG_INTERNAL:-0}" == "1" ]] || _called_by_calamares; then
-    exec /usr/bin/pacman "$@"
-fi
-
-cat >&2 << 'EOF'
+if [[ "${_VPKG_INTERNAL:-0}" != "1" ]]; then
+    cat >&2 << 'EOF'
 
   ┌─────────────────────────────────────────────────────┐
-  │  Direct pacman access is disabled on Vertex Linux.  │
-  │                                                     │
-  │  Use vpkg instead:                                  │
+  │  Tip: On Vertex Linux, use vpkg instead of pacman.  │
   │    vpkg pm install  <package>                       │
   │    vpkg pm remove   <package>                       │
-  │    vpkg pm search   <query>                         │
   │    vpkg pm update                                   │
-  │    vpkg pm list                                     │
   └─────────────────────────────────────────────────────┘
 
 EOF
-exit 1
+fi
+
+exec /usr/bin/pacman "$@"
