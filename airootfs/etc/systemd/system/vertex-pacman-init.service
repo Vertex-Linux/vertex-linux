@@ -1,0 +1,16 @@
+[Unit]
+Description=Vertex Linux — first-boot pacman database sync
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/vertex-firstboot-pacman
+DefaultDependencies=no
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pacman -Sy --noconfirm
+ExecStartPost=/usr/bin/rm -f /etc/vertex-firstboot-pacman
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

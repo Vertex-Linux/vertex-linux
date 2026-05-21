@@ -68,6 +68,7 @@ openssh
 wget
 curl
 rsync
+firefox
 
 # === Audio / Video ===
 pipewire

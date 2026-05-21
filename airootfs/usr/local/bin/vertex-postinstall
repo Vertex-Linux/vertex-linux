@@ -336,7 +336,19 @@ else
     find "${TARGET}/usr/share/plasma/look-and-feel" -name "defaults" 2>/dev/null | head -5
 fi
 
-# ── 7. Cleanup: remove live-only artifacts ─────────────────────────────────────
+# ── 7. Ensure fastfetch logo is in target ─────────────────────────────────────
+echo "--- Ensuring fastfetch logo"
+mkdir -p "${TARGET}/etc/fastfetch"
+# Calamares copies the squashfs so /etc/fastfetch/vertex.txt should already be
+# there; copy from the live system if somehow missing
+if [ ! -f "${TARGET}/etc/fastfetch/vertex.txt" ] && [ -f "/etc/fastfetch/vertex.txt" ]; then
+    cp /etc/fastfetch/vertex.txt "${TARGET}/etc/fastfetch/vertex.txt" \
+        && echo "Fastfetch logo copied" || echo "WARNING: fastfetch logo copy failed"
+else
+    echo "Fastfetch logo present"
+fi
+
+# ── 8. Cleanup: remove live-only artifacts ─────────────────────────────────────
 echo "--- Cleanup"
 
 # Remove the live user account and its home directory
@@ -386,7 +398,17 @@ arch-chroot "$TARGET" pacman -Sy --noconfirm 2>/dev/null \
     && echo "Pacman databases synced" \
     || echo "WARNING: pacman -Sy failed (no network at install time?)"
 
-# ── 9. Write installed version ─────────────────────────────────────────────────
+# ── 9. Enable first-boot pacman sync service ──────────────────────────────────
+echo "--- Enabling first-boot pacman sync"
+# Create sentinel so the service knows it needs to run
+touch "${TARGET}/etc/vertex-firstboot-pacman"
+# Enable the service
+ln -sf /etc/systemd/system/vertex-pacman-init.service \
+    "${TARGET}/etc/systemd/system/multi-user.target.wants/vertex-pacman-init.service" \
+    && echo "vertex-pacman-init.service enabled" \
+    || echo "WARNING: could not enable vertex-pacman-init.service"
+
+# ── 10. Write installed version ────────────────────────────────────────────────
 echo "--- Writing vertex-release"
 INSTALL_SHA=$(curl -s --max-time 8 \
     -H "User-Agent: vertex-postinstall/1.0" \

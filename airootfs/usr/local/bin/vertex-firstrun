@@ -8,6 +8,11 @@ PLASMA_CFG="${HOME}/.config/plasma-org.kde.plasma.desktop-appletsrc"
 command -v plasma-apply-wallpaperimage &>/dev/null && \
     plasma-apply-wallpaperimage "$WALLPAPER_IMG" 2>/dev/null
 
+# ── Panel opacity: Translucent ────────────────────────────────────────────────
+kwriteconfig6 --file plasmashellrc \
+    --group "PlasmaViews" --group "Panel 2" \
+    --key "opacityMode" "2" 2>/dev/null || true
+
 # ── Launcher icon ──────────────────────────────────────────────────────────────
 # Read the generated plasma config to find kickoff applet IDs, then write
 # the icon directly using kwriteconfig6 (no guessing at containment IDs).

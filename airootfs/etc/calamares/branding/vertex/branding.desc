@@ -9,10 +9,10 @@ strings:
     versionedName:       "Vertex Linux Rolling"
     shortVersionedName:  "Vertex Rolling"
     bootloaderEntryName: "Vertex Linux"
-    productUrl:          "https://https://vertex.arc360hub.com/"
+    productUrl:          "https://vertex.arc360hub.com/"
     supportUrl:          "https://vertex.arc360hub.com/"
     knownIssuesUrl:      "https://vertex.arc360hub.com/"
-    releaseNotesUrl:     "https://https://vertex.arc360hub.com/"
+    releaseNotesUrl:     "https://vertex.arc360hub.com/"
 
 images:
     productLogo:    "vertex-logo.svg"
