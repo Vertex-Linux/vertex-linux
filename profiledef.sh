@@ -32,6 +32,9 @@ file_permissions=(
     ["/usr/local/bin/vertex-postinstall"]="0:0:755"
     ["/usr/local/bin/vertex-firstrun"]="0:0:755"
     ["/usr/local/bin/vpkg"]="0:0:755"
+    ["/usr/local/bin/pacman"]="0:0:755"
+    ["/usr/local/bin/flatpak"]="0:0:755"
+    ["/usr/local/bin/yay"]="0:0:755"
     ["/usr/local/bin/vertex-drivers"]="0:0:755"
     ["/usr/local/bin/vertex-update"]="0:0:755"
 )

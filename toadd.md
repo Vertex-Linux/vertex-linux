@@ -1,2 +1,3 @@
 - Add an update manager (That lets you update the OS to a new github commit and add all the new stuff from that etc and lets you update other general packages)
 - Fix the installer styling being completly broken
+- Add a custom welcome wizzard to replace the Kde Plasma welcome thing. (2 versions of it that run on the live image and one that runs on the installed OS that walk you through how to connect to wifi and then how to launch the installer or how to launch apps and to configure some stuff etc)
