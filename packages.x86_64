@@ -102,6 +102,7 @@ python
 python-pyqt6
 
 # === System Utilities ===
+lsb-release
 htop
 fastfetch
 vim

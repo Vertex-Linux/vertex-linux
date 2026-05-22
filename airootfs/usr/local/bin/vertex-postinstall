@@ -408,7 +408,18 @@ ln -sf /etc/systemd/system/vertex-pacman-init.service \
     && echo "vertex-pacman-init.service enabled" \
     || echo "WARNING: could not enable vertex-pacman-init.service"
 
-# ── 10. Write installed version ────────────────────────────────────────────────
+# ── 10. Write Vertex lsb-release branding ─────────────────────────────────────
+echo "--- Writing lsb-release"
+cat > "${TARGET}/etc/lsb-release" << 'LSBEOF'
+LSB_VERSION=1.4
+DISTRIB_ID=Vertex
+DISTRIB_RELEASE=rolling
+DISTRIB_CODENAME=vertex
+DISTRIB_DESCRIPTION="Vertex Linux"
+LSBEOF
+echo "lsb-release written"
+
+# ── 11. Write installed version ────────────────────────────────────────────────
 echo "--- Writing vertex-release"
 INSTALL_SHA=$(curl -s --max-time 8 \
     -H "User-Agent: vertex-postinstall/1.0" \
