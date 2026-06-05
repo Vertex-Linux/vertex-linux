@@ -132,6 +132,15 @@ arch-chroot "$TARGET" pacman-key --populate archlinux \
 echo "--- Setting up mkinitcpio"
 rm -f "${TARGET}/etc/mkinitcpio.conf.d/archiso.conf"
 
+# Ensure Plymouth uses the vertex theme on the installed system
+mkdir -p "${TARGET}/etc/plymouth"
+cat > "${TARGET}/etc/plymouth/plymouthd.conf" << 'PLYMOUTHCONF'
+[Daemon]
+Theme=vertex
+ShowDelay=0
+PLYMOUTHCONF
+echo "Plymouth theme set to vertex"
+
 # Add plymouth hook after udev in the installed system's mkinitcpio.conf
 if grep -q "^HOOKS=" "${TARGET}/etc/mkinitcpio.conf" 2>/dev/null; then
     sed -i 's/\(HOOKS=([^)]*udev\)/\1 plymouth/' "${TARGET}/etc/mkinitcpio.conf"
@@ -253,90 +262,7 @@ menuentry "Vertex Linux (fallback initramfs)" {
 GRUBEOF
 echo "grub.cfg written"
 
-# ── 6. Patch KDE kickoff default launcher icon (main.xml fallback) ────────────
-echo "--- Patching kickoff default icon in main.xml"
-KICKOFF_XML=$(find "${TARGET}/usr/share/plasma" -path "*/kickoff/contents/config/main.xml" 2>/dev/null | head -1)
-if [ -n "$KICKOFF_XML" ]; then
-    python3 - "$KICKOFF_XML" << 'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-with open(path, 'r') as f:
-    content = f.read()
-
-# Replace the <default>...</default> inside any <entry name="icon"> block
-patched = re.sub(
-    r'(<entry\s[^>]*name=["\']icon["\'][^>]*>.*?<default>)[^<]*(</default>)',
-    r'\1vertex-launcher\2',
-    content,
-    flags=re.DOTALL | re.IGNORECASE
-)
-
-if patched != content:
-    with open(path, 'w') as f:
-        f.write(patched)
-    print(f"Kickoff main.xml patched: {path}")
-elif 'vertex-launcher' in content:
-    print("main.xml already patched")
-else:
-    print(f"WARNING: icon entry not found in {path}")
-PYEOF
-else
-    echo "NOTE: kickoff main.xml not found — layout.js patch is primary method"
-fi
-
-# ── 5b. Patch Plasma defaultPanel layout JS to set kickoff icon ──────────────
-echo "--- Patching Plasma defaultPanel layout JS for kickoff icon"
-LAYOUT_JS="${TARGET}/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js"
-if [ -f "$LAYOUT_JS" ]; then
-    python3 - "$LAYOUT_JS" << 'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-with open(path, 'r') as f:
-    content = f.read()
-
-# Replace bare addWidget call with one that captures the return value and sets icon
-# Handles: panel.addWidget("org.kde.plasma.kickoff")
-old = 'panel.addWidget("org.kde.plasma.kickoff")'
-new = ('var kickoff = panel.addWidget("org.kde.plasma.kickoff")\n'
-       'kickoff.currentConfigGroup = ["General"]\n'
-       'kickoff.writeConfig("icon", "vertex-launcher")')
-
-if old in content:
-    content = content.replace(old, new)
-    with open(path, 'w') as f:
-        f.write(content)
-    print("Layout JS patched: kickoff icon set")
-elif 'vertex-launcher' in content:
-    print("Layout JS already patched")
-else:
-    print(f"WARNING: kickoff addWidget not found in {path}")
-PYEOF
-else
-    echo "NOTE: defaultPanel layout.js not found at expected path — searching"
-    find "${TARGET}/usr/share/plasma/layout-templates" -name "layout.js" 2>/dev/null | head -5
-fi
-
-# ── 5c. Patch Breeze look-and-feel defaults for wallpaper ─────────────────────
-echo "--- Setting default wallpaper in look-and-feel"
-LNF="${TARGET}/usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/defaults"
-if [ -f "$LNF" ]; then
-    echo "Current look-and-feel defaults:"
-    cat "$LNF"
-    if grep -q "^\[Wallpaper\]" "$LNF"; then
-        sed -i '/^\[Wallpaper\]/,/^\[/ s|^Image=.*|Image=VertexDefault|' "$LNF"
-    else
-        printf '\n[Wallpaper]\nImage=VertexDefault\n' >> "$LNF"
-    fi
-    echo "Updated look-and-feel defaults:"
-    cat "$LNF"
-else
-    echo "NOTE: look-and-feel defaults not found — searching"
-    find "${TARGET}/usr/share/plasma/look-and-feel" -name "defaults" 2>/dev/null | head -5
-fi
-
-# ── 7. Ensure fastfetch logo is in target ─────────────────────────────────────
+# ── 6. Ensure fastfetch logo is in target ─────────────────────────────────────
 echo "--- Ensuring fastfetch logo"
 mkdir -p "${TARGET}/etc/fastfetch"
 # Calamares copies the squashfs so /etc/fastfetch/vertex.txt should already be
@@ -359,12 +285,43 @@ arch-chroot "$TARGET" userdel -r liveuser 2>/dev/null \
 # Remove live-only sudoers rule (installed user should use password for sudo)
 rm -f "${TARGET}/etc/sudoers.d/liveuser"
 
+# Remove live-only polkit rule that grants wheel group passwordless auth
+# Without this, the installed system would never prompt for a password
+rm -f "${TARGET}/etc/polkit-1/rules.d/49-liveuser.rules"
+echo "live polkit rule removed"
+
 # Remove installer desktop shortcut (not needed post-install)
 rm -f "${TARGET}/usr/share/applications/vertex-install.desktop"
 
 # Remove any installer shortcuts from all home desktops
 find "${TARGET}/home" -name "vertex-install.desktop" -o -name "calamares.desktop" \
     2>/dev/null | xargs rm -f 2>/dev/null || true
+
+# Remove live-only SDDM autologin — liveuser no longer exists on installed system
+SDDM_CONF="${TARGET}/etc/sddm.conf.d/vertex.conf"
+if [ -f "$SDDM_CONF" ]; then
+    python3 - "$SDDM_CONF" << 'PYEOF'
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+# Remove [Autologin] section and everything under it until the next section
+content = re.sub(r'\[Autologin\][^\[]*', '', content, flags=re.DOTALL)
+with open(path, 'w') as f:
+    f.write(content.strip() + '\n')
+PYEOF
+    echo "SDDM autologin removed"
+fi
+
+# Remove bare awesome session entry so only Calla appears in the login screen
+rm -f "${TARGET}/usr/share/xsessions/awesome.desktop"
+echo "awesome.desktop removed from xsessions"
+
+# Mask systemd-firstboot — Calamares already handles timezone/locale/hostname,
+# so this TUI setup screen should never appear on first boot
+arch-chroot "$TARGET" systemctl mask systemd-firstboot.service 2>/dev/null \
+    && echo "systemd-firstboot masked" \
+    || echo "NOTE: could not mask systemd-firstboot"
 
 # ── 8. Set up pacman mirrorlist and sync databases ────────────────────────────
 echo "--- Setting up pacman mirrors and databases"
@@ -423,7 +380,7 @@ echo "lsb-release written"
 echo "--- Writing vertex-release"
 INSTALL_SHA=$(curl -s --max-time 8 \
     -H "User-Agent: vertex-postinstall/1.0" \
-    "https://api.github.com/repos/arc360alt/vertex-linux/commits/main" \
+    "https://api.github.com/repos/Vertex-Linux/vertex-linux/commits/main" \
     2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['sha'])" 2>/dev/null || true)
 if [ -n "$INSTALL_SHA" ]; then
     echo "$INSTALL_SHA" > "${TARGET}/etc/vertex-release"

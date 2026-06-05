@@ -48,7 +48,7 @@ Presentation {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 80
-            text: "A modern, rolling-release desktop powered by KDE Plasma 6"
+            text: "A modern, rolling-release desktop powered by the Calla DE"
             color: "#C4B5FD"
             font.pixelSize: 15
         }
@@ -118,7 +118,7 @@ Presentation {
         }
     }
 
-    // ── Slide 3: KDE Plasma ───────────────────────────────────────────────────
+    // ── Slide 3: Calla Desktop ────────────────────────────────────────────────
     Slide {
 
         Image {
@@ -140,7 +140,7 @@ Presentation {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             y: 80
-            text: "KDE Plasma 6 Desktop"
+            text: "Calla Desktop Environment"
             color: "#FFFFFF"
             font.pixelSize: 30
             font.bold: true
@@ -149,7 +149,7 @@ Presentation {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             y: 128
-            text: "Beautiful, fast, and endlessly customisable"
+            text: "A custom desktop built for Vertex Linux"
             color: "#A78BFA"
             font.pixelSize: 15
         }
@@ -158,10 +158,10 @@ Presentation {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: 20
             spacing: 14
-            Text { text: "✦  Wayland-first with full X11 compatibility"; color: "#E2D9F3"; font.pixelSize: 15 }
-            Text { text: "✦  Plasma panels, widgets, and themes";        color: "#E2D9F3"; font.pixelSize: 15 }
-            Text { text: "✦  KDE Connect — sync with your phone";        color: "#E2D9F3"; font.pixelSize: 15 }
-            Text { text: "✦  Discover — graphical software centre";      color: "#E2D9F3"; font.pixelSize: 15 }
+            Text { text: "✦  Built on AwesomeWM — fast and lightweight";  color: "#E2D9F3"; font.pixelSize: 15 }
+            Text { text: "✦  Picom compositor — smooth effects";           color: "#E2D9F3"; font.pixelSize: 15 }
+            Text { text: "✦  Nemo file manager — simple and powerful";     color: "#E2D9F3"; font.pixelSize: 15 }
+            Text { text: "✦  Alacritty terminal — blazing fast";           color: "#E2D9F3"; font.pixelSize: 15 }
         }
 
         Text {

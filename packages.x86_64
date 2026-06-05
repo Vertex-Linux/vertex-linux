@@ -28,74 +28,72 @@ plymouth
 # === Display Server ===
 xorg-server
 xorg-xinit
+xorg-xrandr
+xorg-xset
 xf86-video-vesa
 xf86-video-nouveau
 xf86-video-amdgpu
 xf86-video-intel
 
-# === KDE Plasma Desktop ===
-plasma-meta
+# === Display Manager ===
 sddm
-sddm-kcm
+
+# === Calla Desktop Environment ===
+# awesome-git is installed via AUR in customize_airootfs.sh (Calla requires it)
+alacritty
+picom
+playerctl
+brightnessctl
+maim
+inotify-tools
+arandr
+nemo
+polkit-gnome
+blueman
+breeze
+breeze-icons
+breeze-gtk
+qt5ct
+qt6ct
 xdg-user-dirs
 xdg-utils
-kdegraphics-thumbnailers
-ffmpegthumbs
-
-# === KDE Applications ===
-dolphin
-konsole
-kate
-ark
-gwenview
-spectacle
-okular
-kcalc
-kdeconnect
-partitionmanager
-discover
-packagekit-qt6
-flatpak
-plasma-browser-integration
-filelight
-flatpak
+papirus-icon-theme
 
 # === Network ===
 networkmanager
-plasma-nm
-network-manager-applet
+# network-manager-applet - Calla has its own built in applet.
 openssh
 wget
 curl
 rsync
 firefox
 
-# === Audio / Video ===
+# === Audio ===
 pipewire
 pipewire-alsa
 pipewire-pulse
 wireplumber
-plasma-pa
 gst-plugin-pipewire
-phonon-qt6-vlc
 
 # === Bluetooth ===
 bluez
 bluez-utils
-bluedevil
 
 # === Printing ===
 cups
-print-manager
 
 # === Fonts ===
 noto-fonts
 noto-fonts-cjk
+noto-fonts-extra
 noto-fonts-emoji
 ttf-liberation
 ttf-dejavu
 ttf-hack
 adobe-source-code-pro-fonts
+
+# === Flatpak ===
+flatpak
 
 # === Python ===
 python

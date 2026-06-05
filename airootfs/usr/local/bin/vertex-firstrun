@@ -1,74 +1,8 @@
 #!/usr/bin/env bash
-# Runs once on first KDE login. Sets wallpaper and launcher icon, then removes itself.
+# Runs once on first login. Sets up user directories, then removes itself.
 
-WALLPAPER_IMG="/usr/share/wallpapers/VertexDefault/contents/images/1920x1080.png"
-PLASMA_CFG="${HOME}/.config/plasma-org.kde.plasma.desktop-appletsrc"
+# Create standard XDG user directories (Downloads, Documents, etc.)
+command -v xdg-user-dirs-update &>/dev/null && xdg-user-dirs-update
 
-# ── Wallpaper ──────────────────────────────────────────────────────────────────
-command -v plasma-apply-wallpaperimage &>/dev/null && \
-    plasma-apply-wallpaperimage "$WALLPAPER_IMG" 2>/dev/null
-
-# ── Panel opacity: Translucent ────────────────────────────────────────────────
-kwriteconfig6 --file plasmashellrc \
-    --group "PlasmaViews" --group "Panel 2" \
-    --key "opacityMode" "2" 2>/dev/null || true
-
-# ── Launcher icon ──────────────────────────────────────────────────────────────
-# Read the generated plasma config to find kickoff applet IDs, then write
-# the icon directly using kwriteconfig6 (no guessing at containment IDs).
-if [ -f "$PLASMA_CFG" ]; then
-    python3 << PYEOF
-import os, re, subprocess
-
-cfg = os.path.expanduser("~/.config/plasma-org.kde.plasma.desktop-appletsrc")
-with open(cfg) as f:
-    content = f.read()
-
-# Find every section header and the lines that follow it
-# Section format: [Containments][N][Applets][M]
-# We look for sections where the next lines include plugin=*kickoff*
-section_re = re.compile(r'^\[([^\]]+)\](\[[^\]]+\])*', re.MULTILINE)
-
-# Parse into {section_string: {key: value}}
-sections = {}
-current = None
-for line in content.splitlines():
-    if line.startswith('['):
-        current = line
-        sections.setdefault(current, {})
-    elif '=' in line and current:
-        k, _, v = line.partition('=')
-        sections[current][k.strip()] = v.strip()
-
-# Find kickoff applet sections (top-level [Containments][N][Applets][M])
-for sec, kvs in sections.items():
-    if kvs.get('plugin', '').find('kickoff') != -1:
-        # Parse containment ID and applet ID from section like
-        # [Containments][1][Applets][2]
-        m = re.match(r'\[Containments\]\[(\d+)\]\[Applets\]\[(\d+)\]$', sec)
-        if m:
-            c_id, a_id = m.groups()
-            cmd = [
-                'kwriteconfig6',
-                '--file', 'plasma-org.kde.plasma.desktop-appletsrc',
-                '--group', 'Containments', '--group', c_id,
-                '--group', 'Applets',      '--group', a_id,
-                '--group', 'Configuration','--group', 'General',
-                '--key', 'icon', 'vertex-launcher'
-            ]
-            r = subprocess.run(cmd, capture_output=True)
-            print(f"Set icon: containment={c_id} applet={a_id} rc={r.returncode}")
-PYEOF
-
-    # Signal Plasma to reload the applet config and set panel height live
-    for QDBUS in qdbus6 qdbus; do
-        if command -v "$QDBUS" &>/dev/null; then
-            "$QDBUS" org.kde.plasmashell /PlasmaShell \
-                org.kde.PlasmaShell.evaluateScript \
-                'var p=panels();for(var i=0;i<p.length;i++){p[i].height=50;var a=p[i].applets();for(var j=0;j<a.length;j++){if(a[j].type.indexOf("kickoff")!==-1){a[j].currentConfigGroup=["General"];a[j].writeConfig("icon","vertex-launcher");a[j].reloadConfig();}}}' \
-                2>/dev/null && break
-        fi
-    done
-fi
-
+# Remove this autostart entry so it never runs again
 rm -f "${HOME}/.config/autostart/vertex-firstrun.desktop"

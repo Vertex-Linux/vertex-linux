@@ -1,8 +1,8 @@
 [Plymouth Theme]
-Name=Vertex Linux
+Name=Vertex
 Description=Vertex Linux boot splash
 ModuleName=script
 
 [script]
-ImageDir=/usr/share/plymouth/themes/vertex/images
+ImageDir=/usr/share/plymouth/themes/vertex
 ScriptFile=/usr/share/plymouth/themes/vertex/vertex.script
