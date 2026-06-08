@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Vertex Terminal
+GenericName=Terminal Emulator
+Comment=The terminal for Vertex Linux
+Exec=vertex-term
+Icon=utilities-terminal
+Terminal=false
+StartupNotify=true
+Categories=System;Settings;
+Keywords=term;console;terminal;command

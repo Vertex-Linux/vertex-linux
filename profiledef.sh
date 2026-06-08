@@ -37,4 +37,6 @@ file_permissions=(
     ["/usr/local/bin/yay"]="0:0:755"
     ["/usr/local/bin/vertex-drivers"]="0:0:755"
     ["/usr/local/bin/vertex-update"]="0:0:755"
+    ["/usr/local/bin/vertex-term"]="0:0:755"
+    ["/usr/local/bin/vertex-store"]="0:0:755"
 )

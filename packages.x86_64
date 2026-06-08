@@ -40,7 +40,7 @@ sddm
 
 # === Calla Desktop Environment ===
 # awesome-git is installed via AUR in customize_airootfs.sh (Calla requires it)
-alacritty
+# alacritty - Use our own terminal instead.
 picom
 playerctl
 brightnessctl
@@ -58,6 +58,7 @@ qt6ct
 xdg-user-dirs
 xdg-utils
 papirus-icon-theme
+xterm
 
 # === Network ===
 networkmanager

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Vertex Store
+GenericName=App Store
+Comment=The main appstore for Vertex Linux
+Exec=vertex-store
+Icon=gnome-software
+Terminal=false
+StartupNotify=true
+Categories=System;Settings;
+Keywords=store;app;apps;vertex
