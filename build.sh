@@ -7,11 +7,72 @@ PROFILE_DIR="$(dirname "$(realpath "$0")")"
 WORK_DIR="${PROFILE_DIR}/work"
 OUT_DIR="${PROFILE_DIR}/out"
 LOCAL_REPO="/var/cache/vertex-linux/local-repo"
+BIN_DIR="${PROFILE_DIR}/airootfs/usr/local/bin"
 
 if [[ $EUID -ne 0 ]]; then
     echo "Re-running with sudo..."
     exec sudo "$0" "$@"
 fi
+
+# ── Fetch latest custom Vertex Linux tool binaries ───────────────────────────
+# Pulls the newest prebuilt release of each in-house tool straight from GitHub
+# so the ISO always ships current binaries without them being committed here.
+fetch_vertex_tools() {
+    echo "[tools] Refreshing bundled Vertex Linux tools..."
+    pacman -S --needed --noconfirm curl jq
+
+    local gh_auth=()
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        gh_auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+    fi
+
+    # $1 = repo (owner/name), $2 = jq boolean expr selecting the release
+    # (applied to each release object as `.`), $3 = asset filename, $4 = dest path
+    _fetch_latest_asset() {
+        local repo="$1" tag_expr="$2" asset_name="$3" dest="$4"
+
+        local asset_url
+        asset_url=$(curl -fsSL "${gh_auth[@]}" "https://api.github.com/repos/${repo}/releases?per_page=100" \
+            | jq -r --arg asset "$asset_name" "
+                [.[] | select(${tag_expr})][0].assets[]?
+                | select(.name == \$asset) | .browser_download_url
+            ")
+
+        if [[ -z "$asset_url" || "$asset_url" == "null" ]]; then
+            echo "ERROR: could not find asset '${asset_name}' in ${repo} (filter: ${tag_expr})" >&2
+            exit 1
+        fi
+
+        echo "[tools] Fetching ${asset_name} <- ${asset_url}"
+        curl -fsSL "$asset_url" -o "$dest"
+        chmod 755 "$dest"
+    }
+
+    _fetch_latest_asset "Vertex-Linux/vertex-tools" '.tag_name | startswith("vpkg-")' \
+        "vpkg-x86_64-unknown-linux-gnu" "${BIN_DIR}/vpkg"
+
+    _fetch_latest_asset "Vertex-Linux/vertex-tools" '.tag_name | endswith("-vu")' \
+        "vertex-update-x86_64-unknown-linux-gnu" "${BIN_DIR}/vertex-update"
+
+    _fetch_latest_asset "Vertex-Linux/vertex-tools" '.tag_name | endswith("-vt")' \
+        "vertex-term-x86_64-unknown-linux-gnu" "${BIN_DIR}/vertex-term"
+
+    local store_url
+    store_url=$(curl -fsSL "${gh_auth[@]}" "https://api.github.com/repos/Vertex-Linux/vertex-appstore/releases/latest" \
+        | jq -r '.assets[] | select(.name == "vertex-store-linux-x86_64") | .browser_download_url')
+
+    if [[ -z "$store_url" || "$store_url" == "null" ]]; then
+        echo "ERROR: could not find vertex-store asset in latest vertex-appstore release" >&2
+        exit 1
+    fi
+
+    echo "[tools] Fetching vertex-store <- ${store_url}"
+    curl -fsSL "$store_url" -o "${BIN_DIR}/vertex-store"
+    chmod 755 "${BIN_DIR}/vertex-store"
+
+    echo "[tools] Done."
+}
+fetch_vertex_tools
 
 # ── Build calamares from AUR into a local pacman repo ────────────────────────
 build_calamares() {

@@ -59,6 +59,7 @@ xdg-user-dirs
 xdg-utils
 papirus-icon-theme
 xterm
+discover
 
 # === Network ===
 networkmanager
